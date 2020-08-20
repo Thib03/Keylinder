@@ -258,7 +258,6 @@ class Note {
     this.button.resize(2*r,2*r);
     this.button.locate(x-r,y-r);
     this.button.strokeWeight = weight*dimension;
-    this.draw();
   }
 
   setColor(d) {
@@ -637,15 +636,33 @@ function setup() {
 var dx = 0;
 
 function draw() {
-  dx += 0.01;
+  //dx += 0.01;
   while(dx > 12) dx -= 12;
-  dx = 2 * mouseY / height * 12;
-  while(dx > 12) dx -= 12;
+  //dx = 2 * mouseY / height * 12;
+  //while(dx > 12) dx -= 12;
   background(white);
 
   noFill();
   stroke(black);
   strokeWeight(weight*dimension);
+
+  let a = 0;
+  while(a >= 12*PI/6) a -= 12*PI/6;
+  let x0 = width/6+bigRadius*dimension*cos(a)/4;
+  let x1;
+  let x1a = 5*width/6+bigRadius*dimension*cos(a)/4;
+  let x1b = 13*width/60+bigRadius*dimension*cos(a)/4;
+  let y = height/2+bigRadius*dimension*sin(a);
+
+  /*arc(width/6+bigRadius*dimension*(cos(a)-1)/4+(2-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,91*PI/60,29*PI/60);
+  arc(width/6+bigRadius*dimension*(cos(a)-1)/4+(3-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,93*PI/60,27*PI/60);
+  arc(width/6+bigRadius*dimension*(cos(a)-1)/4+(4-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,94.5*PI/60,25.5*PI/60);
+  arc(width/6+bigRadius*dimension*(cos(a)-1)/4+(5-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,95.8*PI/60,24.2*PI/60);
+  arc(width/6+bigRadius*dimension*(cos(a)-1)/4+(6-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,96.7*PI/60,23.3*PI/60);
+  arc(width/6+bigRadius*dimension*(cos(a)-1)/4+(7-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,98*PI/60,22*PI/60);*/
+
+  var tempNotes = [];
+
   for(let t = 0; t < 12; t++) {
     let a = t*PI/6 + dx*PI/6;
     while(a >= 12*PI/6) a -= 12*PI/6;
@@ -672,8 +689,19 @@ function draw() {
     if(nbrd >= 2) {//a >= 10.05*PI/6 || a < 1.95*PI/6) {
       for(d = 2; d <= nbrd; d++) {
         let newNote = new Note((d+t*4)%7+1,1);
+        if(t == 5) {
+          newNote.button.color = degToColor(d);
+        }
         newNote.alter(alt(degToNdt(newNote.d-notes[t].d+1)-ndt(newNote.n-notes[t].n)));
         newNote.setPosition(width/6+bigRadius*dimension*cos(a)/4+(d-1)*(x1a-x0)/6,height/2+bigRadius*dimension*sin(a));
+        tempNotes.push(newNote);
+        if(t == 5) console.log(atan(4*tan(a)));
+        if(a >= 9*PI/6 && a < 11.9*PI/6) {
+          arc(width/6+(d-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,atan(4*tan(a)),0);
+        }
+        else if(a > 0.1 && a < 3*PI/6) {
+          arc(width/6+(d-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,0,atan(4*tan(a)));
+        }
       }
       stroke(black);
       noFill();
@@ -682,12 +710,17 @@ function draw() {
   ellipse(width/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension);
   //ellipse(5*width/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension);
 
+  for(let n = 0; n < tempNotes.length; n++) {
+    tempNotes[n].draw();
+  }
+
   //var otherNotes = [];
 
   let t0 = (12-floor(dx)+5)%12;
   let t1 = (t0+11)%12;
   //console.log("t0 : "+t0+" t1 : "+t1);
 
+  notes[5].button.color = degToColor(1);
   let i = 0;
   for(let t = t0; i < 8; t++) {
     t %= 12;
@@ -695,6 +728,7 @@ function draw() {
     let a = t*PI/6 + dx*PI/6;
     while(a >= 2*PI) a -= 2*PI;
     notes[t].setPosition(width/6+bigRadius*dimension*cos(a)/4,height/2+bigRadius*dimension*sin(a));
+    notes[t].draw();
   }
   i = 0;
   for(let t = t1; i < 4; t--) {
@@ -704,6 +738,7 @@ function draw() {
     let a = t*PI/6 + dx*PI/6;
     while(a >= 2*PI) a -= 2*PI;
     notes[t].setPosition(width/6+bigRadius*dimension*cos(a)/4,height/2+bigRadius*dimension*sin(a));
+    notes[t].draw();
   }
 
   /*var amp = floor(1000*mic.amplitude.volume);
@@ -770,6 +805,27 @@ function windowResized() {
   }
 
   midiHandler.update();
+}
+
+//------------------------------------------------------------------------------
+//                             MOUSE
+//------------------------------------------------------------------------------
+
+var iMouseY = 0;
+
+function mousePressed() {
+  iMouseY = mouseY;
+}
+
+function mouseDragged() {
+  dx += 0.01*(mouseY - iMouseY);
+  while(dx < 0) dx += 12;
+  while(dx >= 12) dx -= 12;
+  iMouseY = mouseY;
+}
+
+function mouseReleased() {
+  iMouseY = 0;
 }
 
 //------------------------------------------------------------------------------
