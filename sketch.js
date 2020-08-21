@@ -633,7 +633,7 @@ function setup() {
    });
 }
 
-var dx = 0;
+var dx = 7;
 
 function draw() {
   //dx += 0.01;
