@@ -44,6 +44,11 @@ var synth;
 
 var font, fontLight;
 
+var ndx = 7;
+var dx = ndx;
+
+var fundamental = 84;//5*7+0;
+
 var tritons = [];
 
 for(let i = 0; i < 6; i++) {
@@ -163,9 +168,9 @@ function triggerColors(deg,overwrite = false) {
 }
 
 class Note {
-  constructor(degree,layout=0) {
+  constructor(degree,f) {
     this.d = degree;
-    this.layout = layout;
+    this.fundamental = f;
 
     this.n = degToNdt(degree);
     this.angle = PI/2 - this.n*PI/6;
@@ -183,48 +188,21 @@ class Note {
 
     var deg = this.d;
 
+    var mX, mY;
+
     this.button.onPress = function() {
-      if(layout) return;
-      notePressed = deg-1;
-      dragDist = 0;
-      dragX = mouseX;
-      dragY = mouseY;
+      mX = mouseX;
+      mY = mouseY;
     }
 
     this.button.onRelease = function() {
-      if(layout) return;
-      if(notePressed > -1) {
-        var note = notes[notePressed];
-        notePressed = -1;
-        var x = mouseX-width/2;
-        var y = -(mouseY-height/2);
-        var a = Math.atan(y/x);
-        if(x < 0) {
-          a += PI;
-        }
-        var min = (notes[(note.d+5)%7].n+1)%12;
-        var max =  notes[(note.d  )%7].n;
-        for(let n = min; n != max; n = (n+1)%12) {
-          var da = PI/2 - n*PI/6 - a;
-          while(da < 0)     {da += 2*PI;}
-          while(da >= 2*PI) {da -= 2*PI;}
-          if(da >= 2*PI - PI/12 || da < PI/12) {
-            if(n != note.n) {
-              note.n = n;
-              if(note.d == fonDeg) {
-                for(let d = 2; d <= 7; d++) {
-                  notes[(fonDeg+d+5)%7].updateText();
-                }
-              }
-            }
-            else if(dragDist < dragLimit*dimension) {
-              triggerColors(note.d);
-            }
-          }
-        }
-        note.angle = PI/2 - note.n*PI/6;
-        note.updateText();
-        note.update();
+      if(sqrt(pow(mX-mouseX,2)+pow(mY-mouseY,2)) < 1) {
+        fundamental = f;
+        if(midi) keylinderOutput.send(noteOnStatus,[f,100]);
+        let nndx = 12-floor(fundamental/7)+floor(ndx/12)*12;
+        if(ndx - nndx > 5) ndx = nndx + 12;
+        else if(nndx - ndx > 6) ndx = nndx - 12;
+        else ndx = nndx;
       }
     }
 
@@ -342,20 +320,9 @@ class Note {
     fill(this.textColor);
     textAlign(CENTER,CENTER);
     var adjustY;
-    if(this.layout) {
-      textSize(0.036*dimension);
-      adjustY = -0.005*dimension;
-      textFont(smallFont);
-    }
-    /*else if(fonDeg) {
-      textSize(0.1*dimension);
-      adjustY = -0.02*dimension;
-    }*/
-    else {
-      textSize(0.08*dimension);
-      adjustY = -0.01*dimension;
-      textFont(bigFont);
-    }
+    textSize(0.036*dimension);
+    adjustY = -0.005*dimension;
+    textFont(smallFont);
     text(this.text,this.button.x+this.button.width/2,
                    this.button.y+this.button.height/2+adjustY);
   }
@@ -568,8 +535,8 @@ class MidiHandler {
   update() {
     let r = midiRadius*dimension;
     this.button.resize(2*r,2*r);
-    this.button.locate(width/2 -r,
-                       height/2-r);
+    this.button.locate(0.9*width-r,
+                      0.1*height-r);
     this.button.strokeWeight = weight*dimension;
   }
 
@@ -582,11 +549,11 @@ class MidiHandler {
     let br = 0.6*midiRadius*dimension;
     for(let n = 0; n < 5; n++) {
       let a = n*PI/4;
-      circle(width/2+br*cos(a),height/2-br*sin(a),2*r,2*r);
+      circle(0.9*width+br*cos(a),0.1*height-br*sin(a),2*r,2*r);
     }
     let l = 0.7*midiRadius*dimension;
     let h = 0.35*midiRadius*dimension;
-    rect(width/2-l/2,height/2+1.1*br,l,h,h);
+    rect(0.9*width-l/2,0.1*height+1.1*br,l,h,h);
   }
 }
 
@@ -615,13 +582,23 @@ function setup() {
       case 3: a = -1; break;
       case 11: a = 1; break;
     }
-    let newNote = new Note((8+4*n)%7+1,1);
+    let newNote = new Note((8+4*n)%7+1,n*7);
     newNote.alter(a);
     notes.push(newNote);
+    let otherNote;
+    for(let d = 2; d <= 7; d++) {
+      otherNote = new Note((d+n*4)%7+1,n*7+d-1);
+      if(fundamental != 84 && n == floor(fundamental/7)) {
+        otherNote.button.color = degToColor(deg(7-fundamental%7+d));
+      }
+      otherNote.alter(alt(degToNdt(otherNote.d-newNote.d+1)-ndt(otherNote.n-newNote.n)));
+      notes.push(otherNote);
+    }
   }
 
 
-  midiHandler = new MidiHandler();
+  //midiHandler = new MidiHandler();
+  enableMidi();
 
   /*mic = new p5.AudioIn()
   mic.start();
@@ -633,11 +610,14 @@ function setup() {
    });
 }
 
-var dx = 7;
-
 function draw() {
-  //dx += 0.01;
-  while(dx > 12) dx -= 12;
+  dx = lerp(dx,ndx,0.1);
+  if(abs(dx-ndx) < 0.001) {
+    while(ndx >= 12) ndx -= 12;
+    while(ndx < 0) ndx += 12;
+    dx = ndx;
+  }
+  //while(dx > 12) dx -= 12;
   //dx = 2 * mouseY / height * 12;
   //while(dx > 12) dx -= 12;
   background(white);
@@ -664,21 +644,24 @@ function draw() {
   var tempNotes = [];
 
   for(let t = 0; t < 12; t++) {
+    notes[t*7].button.color = white;
+    if(fundamental != 84 && t == floor(fundamental/7)) notes[t*7].button.color = degToColor(deg(7-fundamental%7+1));
     let a = t*PI/6 + dx*PI/6;
     while(a >= 12*PI/6) a -= 12*PI/6;
+    while(a < 0) a += 12*PI/6;
     let x0 = width/6+bigRadius*dimension*cos(a)/4;
     let x1;
     let x1a = 5*width/6+bigRadius*dimension*cos(a)/4;
     let x1b = 13*width/60+bigRadius*dimension*cos(a)/4;
     let y = height/2+bigRadius*dimension*sin(a);
     if(a >= 6*PI/6 && a < 11*PI/6) {
-      x1 = x1b+(x1a-x1b)*(exp(((a-6*PI/6)/(5*PI/6)-1)*7));
+      x1 = x1b+(x1a-x1b)*(exp(((a-6*PI/6)/(4.99*PI/6)-1)*7));
     }
     else if(a >= 10*PI/6 || a < 1*PI/6) {
       x1 = x1a;
     }
     else if(a < 6*PI/6) {
-      x1 = x1b+(x1a-x1b)*(exp(((6*PI/6-a)/(5*PI/6)-1)*7));
+      x1 = x1b+(x1a-x1b)*(exp(((6*PI/6-a)/(4.99*PI/6)-1)*7));
     }
     else {
       x1 = x1b;
@@ -688,14 +671,17 @@ function draw() {
     let nbrd = floor(l*6+1);
     if(nbrd >= 2) {//a >= 10.05*PI/6 || a < 1.95*PI/6) {
       for(d = 2; d <= nbrd; d++) {
-        let newNote = new Note((d+t*4)%7+1,1);
-        if(t == 5) {
-          newNote.button.color = degToColor(d);
+        let newNote = notes[t*7+d-1];
+        if(fundamental != 83 && t == floor(fundamental/7)) {
+          newNote.button.color = degToColor(deg(7-fundamental%7+d));
         }
-        newNote.alter(alt(degToNdt(newNote.d-notes[t].d+1)-ndt(newNote.n-notes[t].n)));
+        else {
+          newNote.button.color = white;
+        }
+        //newNote.alter(alt(degToNdt(newNote.d-notes[t].d+1)-ndt(newNote.n-notes[t].n)));
         newNote.setPosition(width/6+bigRadius*dimension*cos(a)/4+(d-1)*(x1a-x0)/6,height/2+bigRadius*dimension*sin(a));
         tempNotes.push(newNote);
-        if(t == 5) console.log(atan(4*tan(a)));
+        //if(t == 5) console.log(atan(4*tan(a)));
         if(a >= 9*PI/6 && a < 11.9*PI/6) {
           arc(width/6+(d-1)*(x1a-x0)/6,height/2,bigRadius*dimension/2,2*bigRadius*dimension,atan(4*tan(a)),0);
         }
@@ -716,19 +702,21 @@ function draw() {
 
   //var otherNotes = [];
 
-  let t0 = (12-floor(dx)+5)%12;
+  let nndx = dx;
+  while(nndx >= 12) nndx -= 12;
+  while(nndx < 0) nndx += 12;
+  let t0 = (12-floor(nndx)+5)%12;
   let t1 = (t0+11)%12;
   //console.log("t0 : "+t0+" t1 : "+t1);
 
-  notes[5].button.color = degToColor(1);
   let i = 0;
   for(let t = t0; i < 8; t++) {
     t %= 12;
     i++;
     let a = t*PI/6 + dx*PI/6;
     while(a >= 2*PI) a -= 2*PI;
-    notes[t].setPosition(width/6+bigRadius*dimension*cos(a)/4,height/2+bigRadius*dimension*sin(a));
-    notes[t].draw();
+    notes[t*7].setPosition(width/6+bigRadius*dimension*cos(a)/4,height/2+bigRadius*dimension*sin(a));
+    notes[t*7].draw();
   }
   i = 0;
   for(let t = t1; i < 4; t--) {
@@ -737,8 +725,8 @@ function draw() {
     i++;
     let a = t*PI/6 + dx*PI/6;
     while(a >= 2*PI) a -= 2*PI;
-    notes[t].setPosition(width/6+bigRadius*dimension*cos(a)/4,height/2+bigRadius*dimension*sin(a));
-    notes[t].draw();
+    notes[t*7].setPosition(width/6+bigRadius*dimension*cos(a)/4,height/2+bigRadius*dimension*sin(a));
+    notes[t*7].draw();
   }
 
   /*var amp = floor(1000*mic.amplitude.volume);
@@ -818,13 +806,14 @@ function mousePressed() {
 }
 
 function mouseDragged() {
-  dx += 0.01*(mouseY - iMouseY);
-  while(dx < 0) dx += 12;
-  while(dx >= 12) dx -= 12;
+  ndx = ndx + 0.01*(mouseY - iMouseY);
+  //while(ndx < 0) ndx += 12;
+  //while(ndx >= 12) ndx -= 12;
   iMouseY = mouseY;
 }
 
 function mouseReleased() {
+  ndx = round(ndx);
   iMouseY = 0;
 }
 
@@ -852,79 +841,13 @@ function enableMidi() {
     for(let i = 0; i < taille; i++) {
       num = i+1;
       var name = WebMidi.inputs[i].name;
-      liste += '   ' + num.toString() + '   -   ' + name + '\n';
-      if(name.includes('Progression')) {
+      //liste += '   ' + num.toString() + '   -   ' + name + '\n';
+      if(name.includes('Keylinder input')) {
         if(!WebMidi.inputs[i].hasListener('noteon',      'all', handleScale)) {
           WebMidi.inputs[i].addListener('noteon',        'all', handleScale);
         }
+        console.log('Input ok');
       }
-    }
-
-    i = 0;
-    num = 0;
-
-    while((num < 1 || num > taille) && i < 1) {
-      numStr = window.prompt("Write the number of the desired MIDI input device:\n\n"+liste);
-      if(numStr == null)
-      {
-        num = 0;
-        break;
-      }
-      else if(numStr) num = parseInt(numStr);
-      i++;
-    }
-
-    if(num < 0 || !num || num > taille) {
-      window.alert("No MIDI input selected. MIDI disabled.");
-      disableMidi();
-      return;
-    }
-    else {
-      midiInput = WebMidi.inputs[num-1];
-      let name = midiInput.name;
-      /*if(name == 'MIDIIN2 (Launchpad Pro)') {
-        launchpad.turnOn('MIDIOUT2 (Launchpad Pro)');
-        name += '.\nColours will be displayed on the matrix. Please put your Launchpad Pro into Programmer Mode';
-      }*/
-      if(name.includes('Launchpad Pro')) {
-        let x = (WebMidi.inputs[num-2].name.includes('Launchpad Pro'));
-        let y = (WebMidi.inputs[num  ].name.includes('Launchpad Pro'));
-        var offset;
-        if(!x && y) {
-          offset = 0;
-        }
-        else if(x && y) {
-          offset = 1;
-        }
-        else {
-          offset = 2;
-        }
-        taille = WebMidi.outputs.length;
-        for(let o = 0; o < taille-2; o++) {
-          if(WebMidi.outputs[o  ].name.includes('Launchpad Pro') &&
-             WebMidi.outputs[o+1].name.includes('Launchpad Pro') &&
-             WebMidi.outputs[o+2].name.includes('Launchpad Pro')) {
-            launchpad.turnOn(o+offset);
-            name += '.\nColours will be displayed on the matrix. Please put your Launchpad Pro into Programmer Mode';
-            taille -= 3;
-            break;
-          }
-        }
-      }
-      else if(name.includes('Launchpad Note')) {
-        launchpad.turnOn('Launchpad Note');
-        name += '.\nColours will be displayed on the matrix. Please put your Launchpad Pro into Programmer Mode';
-      }
-      window.alert('Input selected: ' + name + '.');
-      if(!midiInput.hasListener('noteon',      'all', handleNoteOn)) {
-        midiInput.addListener('noteon',        'all', handleNoteOn);
-        midiInput.addListener('keyaftertouch', 'all', handleAftertouch);
-        midiInput.addListener('noteoff',       'all', handleNoteOff);
-        midiInput.addListener('controlchange', 'all', handleControl);
-      }
-      midi = 1;
-      //midiButton.color  = black;
-      //midiButton.stroke = white;
     }
 
     //--------------------OUTPUT--------------------
@@ -934,7 +857,7 @@ function enableMidi() {
     numStr = '0';
 
     if(taille == 0) {
-      window.alert("No MIDI output device detected. A sinewave polyphonic synth will be used as output.");
+      window.alert("No MIDI output device detected.");
       synth = new PolySynth(6);
       return;
     }
@@ -942,313 +865,26 @@ function enableMidi() {
     num = 1;
     for(let i = 0; i < taille; i++) {
       var name = WebMidi.outputs[i].name;
-        liste += '   ' + num.toString() + '   -   ' + name + '\n';
+        //liste += '   ' + num.toString() + '   -   ' + name + '\n';
         num++;
-      if(name.includes('Sequencer')) {
-        hasSequencer = true;
-        sequencerOutput = WebMidi.outputs[i];
+      if(name.includes('Keylinder output')) {
+        keylinderOutput = WebMidi.outputs[i];
+        midi = 1;
+        console.log('Output ok');
       }
-    }
-
-    i = 0;
-    num = 0;
-
-    while((num < 1 || num > taille) && i < 1) {
-      numStr = window.prompt("Write the number of the desired MIDI output device:\n\n"+liste+"\nCancel this pop-up to use the integrated synth.");
-      if(numStr == null)
-      {
-        num = 0;
-        break;
-      }
-      else if(numStr) num = parseInt(numStr);
-      i++;
-    }
-
-    if(num < 0 || !num || num > taille) {
-      window.alert("No MIDI output selected. A sinewave polyphonic synth will be used as output.");
-      synth = new PolySynth(6);
-      return;
-    }
-    else {
-      midiOutput = WebMidi.outputs[num-1];
-      window.alert('Output selected: ' + midiOutput.name + '.');
-      midi = 2;
     }
   },true);
 }
 
 //--------------------EVENTS--------------------
 
-var oct0 = 3;
-
-function handleNoteOn(e) {
-  var deg, oct;
-  var num = e.note.number;
-  if(launchpad.isOn) {
-    let row = Math.floor(num/10)-1;
-    let col = num%10-1;
-    launchpad.noteOn(row,col);
-    deg = (col+4*row)%7+1;
-    oct = oct0+Math.floor((col+4*row)/7);
-  }
-  else {
-    deg = ndtToDeg(num%12);
-    oct = e.note.octave+1;
-  }
-  if(deg) {
-    if(nextNote) {
-      triggerColors(deg);
-    }
-    var vel = e.velocity;
-    num = notes[deg-1].midiNumber(oct);
-    number[7*oct+deg-1] = num;
-    if(midi == 2) {
-      midiOutput.send(e.data[0],[num,e.data[2]]);
-    }
-    else {
-      synth.noteAttack(num,vel);
-    }
-    if(hasSequencer) {
-      sequencerOutput.send(e.data[0],[7*oct+deg-1,fonDeg?(deg-fonDeg+7)%7+1:8]);
-    }
-    notesOn[deg-1].push([num,vel]);
-    var l = notesOn[deg-1].length;
-    if(l > 1) {
-      var max = 0;
-      var v;
-      for(let i = 0; i < l; i++) {
-        v = notesOn[deg-1][i][1];
-        if(v > max) {
-          max = v;
-        }
-      }
-      velocity[deg-1] = max;
-    }
-    else {
-      velocity[deg-1] = vel;
-    }
-    var n0 = notes[deg-1].n;
-    for(var d = 1; d <= 7; d++) {
-      if(d != deg && notesOn[d-1].length) {
-        var n1 = ndt(notesOn[d-1][0][0]);
-        if(ndt(n1-n0) == 6) {
-          tritons[Math.min(n0,n1)] = true;
-        }
-      }
-    }
-  }
-}
-
-function handleAftertouch(e) {
-  var deg, oct;
-  var num = e.note.number;
-  if(launchpad.isOn) {
-    let row = Math.floor(num/10)-1;
-    let col = num%10-1;
-    deg = (col+4*row)%7+1;
-    oct = oct0+Math.floor((col+4*row)/7);
-  }
-  else {
-    deg = ndtToDeg(num%12);
-    oct = e.note.octave+1;
-  }
-  if(deg) {
-    var vel = e.value;
-    num = number[7*oct+deg-1];
-    if(midi == 2) {
-      midiOutput.send(e.data[0],[num,e.data[2]]);
-    }
-    else {
-      synth.noteAftertouch(num,vel);
-    }
-    var l = notesOn[deg-1].length;
-    for(let i = 0; i < l; i++) {
-      if(notesOn[deg-1][i][0] == num) {
-        notesOn[deg-1][i][1] = vel;
-        break;
-      }
-    }
-    if(l > 1) {
-      var max = 0;
-      var v;
-      for(let i = 0; i < l; i++) {
-        v = notesOn[deg-1][i][1];
-        if(v > max) {
-          max = v;
-        }
-      }
-      velocity[deg-1] = max;
-    }
-    else {
-      velocity[deg-1] = vel;
-    }
-  }
-}
-
-function handleNoteOff(e) {
-  var deg, oct;
-  var row, col;
-  var num = e.note.number;
-  if(launchpad.isOn) {
-    row = Math.floor(num/10)-1;
-    col = num%10-1;
-    deg = (col+4*row)%7+1;
-    oct = oct0+Math.floor((col+4*row)/7);
-  }
-  else {
-    deg = ndtToDeg(num%12);
-    oct = e.note.octave+1;
-  }
-  if(deg) {
-    num = number[7*oct+deg-1];
-
-    /*if(midi == 2) {
-      midiOutput.send(e.data[0],[num,e.data[2]]);
-    }
-    else {
-      synth.noteRelease(num);
-    }*/
-
-    var l = notesOn[deg-1].length;
-    for(let i = 0; i < l; i++) {
-      if(notesOn[deg-1][i][0] == num) {
-        notesOn[deg-1].splice(i,1);
-        l--;
-        break;
-      }
-    }
-
-    var lm = 0;
-    for(let i = 0; i < l; i++) {
-      if(notesOn[deg-1][i][0] == num) {
-        lm++;
-      }
-    }
-    if(!lm) {
-      if(midi == 2) {
-        midiOutput.send(e.data[0],[num,e.data[2]]);
-      }
-      else {
-        synth.noteRelease(num);
-      }
-      if(hasSequencer) {
-        sequencerOutput.send(e.data[0],[7*oct+deg-1,e.data[2]]);
-      }
-      if(launchpad.isOn) {
-        launchpad.noteOff(row,col);
-      }
-    }
-
-    if(l >= 1) {
-      var max = 0;
-      var v;
-      for(let i = 0; i < l; i++) {
-        v = notesOn[deg-1][i][1];
-        if(v > max) {
-          max = v;
-        }
-      }
-      velocity[deg-1] = max;
-    }
-    else {
-      velocity[deg-1] = 0;
-
-      var n0 = ndt(num);
-      for(var d = 1; d <= 7; d++) {
-        if(d != deg && notesOn[d-1].length) {
-          var n1 = ndt(notesOn[d-1][0][0]);
-          if(ndt(n1-n0) == 6) {
-            tritons[Math.min(n0,n1)] = false;
-          }
-        }
-      }
-    }
-  }
-}
-
-function handleControl(e) {
-  if(launchpad.isOn) {
-    if(e.controller.number == 10) {
-      if(e.value == 127) {
-        nextNote = true;
-        launchpad.output.send(noteOnStatus,[10,3]);
-      }
-      else if(nextNote) {
-        nextNote = false;
-        launchpad.output.send(noteOnStatus,[10,degToColor(1,true)]);
-      }
-    }
-    else if(fonDeg) {
-      for(var d = 2; d <= 7; d++) {
-        if(e.controller.number == d*10) {
-          if(e.value == 127) {
-            launchpad.output.send(noteOnStatus,[d*10,3]);
-            var n = (fonDeg+d-2)%7;
-            var nAv = ndt(notes[n].n-notes[(n+6)%7].n)-1;
-            var nAp = ndt(notes[(n+1)%7].n-notes[n].n)-1;
-            if(nAv && !nAp) {
-              notes[n].n = ndt(notes[n].n-1);
-            }
-            else if(!nAv && nAp) {
-              notes[n].n = ndt(notes[n].n+1);
-            }
-            else if(nAv && nAp) {
-              var a = alt(ndt(notes[n].n-notes[fonDeg-1].n)-degToNdt(notes[n].d-notes[fonDeg-1].d+1));
-              if(a > 0 || (!a && d != 4)) {
-                notes[n].n = ndt(notes[n].n-1);
-              }
-              else { // a < 0
-                notes[n].n = ndt(notes[n].n+1);
-              }
-            }
-            notes[n].angle = PI/2 - notes[n].n*PI/6;
-            notes[n].updateText();
-            notes[n].update();
-          }
-          else {
-            launchpad.output.send(noteOnStatus,[d*10,degToColor(d,true)]);
-          }
-        }
-      }
-      /*if(e.controller.number == 80) {
-        if(e.value == 127) {
-          launchpad.output.send(noteOnStatus,[80,3]);
-        }
-        else {
-          launchpad.output.send(noteOnStatus,[80,0]);
-        }
-      }*/
-    }
-  }
-}
-
 function handleScale(e) {
-  if(hasSequencer) {
-    sequencerOutput.send(e.data[0],[e.data[1],e.data[2]]);
-  }
-  if(millis()-millisecond > 20) {
-    millisecond = millis();
-    midiScale = [[e.note.number,e.rawVelocity]];
-  }
-  else {
-    midiScale.push([e.note.number,e.rawVelocity]);
-  }
-  if(midiScale.length == 7) {
-    midiScale.sort(function (a, b) {
-      return a[0] - b[0];
-    });
-    triggerColors(midiScale[0][1],true);
-    let i = fonDeg-1;
-    for(let d = 1; d <= 7; d++) {
-      var note = notes[i];
-      note.n = midiScale[d-1][0]%12;
-      note.angle = PI/2 - note.n*PI/6;
-      note.updateText();
-      note.update();
-      i++;
-      i %= 7;
-    }
-  }
+  fundamental = e.note.number;
+  if(fundamental == 84) return;
+  let nndx = 12-floor(fundamental/7)+floor(ndx/12)*12;
+  if(ndx - nndx > 5) ndx = nndx + 12;
+  else if(nndx - ndx > 6) ndx = nndx - 12;
+  else ndx = nndx;
 }
 
 function disableMidi() {
